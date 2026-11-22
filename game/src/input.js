@@ -1,66 +1,64 @@
-// Keyboard and mouse for Puerto Luna.
-//
-// `keys` is the live table of held keys, indexed by KeyboardEvent.code
-// ('KeyW', 'ArrowUp', 'Space', ...). `pressed(code)` answers whether a key
-// is held right now. `mouse` tracks the pointer over the canvas and
-// whether its button is down. Call `initInput(canvas)` once, before the
-// game loop starts, and the listeners below keep the state current.
-//
-// Keys the game uses are captured so the page never scrolls under them
-// (arrows, space); every other key behaves normally.
-export const keys = {};
-export const mouse = { x: 0, y: 0, down: false };
+// Puerto Luna — keyboard and mouse. One small object the loop polls;
+// the game never reads the DOM directly for input anywhere else.
 
-const CAPTURED = new Set([
-  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space',
-  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyM', 'KeyP', 'Enter', 'Escape',
-]);
-
-export function pressed(code) {
-  return !!keys[code];
-}
-
-// True when any of the given codes is held — for keys that share a job,
-// like P and Escape both pausing the game.
-export function anyPressed(...codes) {
-  return codes.some((code) => !!keys[code]);
-}
-
-function canvasPosition(canvas, event) {
-  const box = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / box.width;
-  const scaleY = canvas.height / box.height;
-  return {
-    x: (event.clientX - box.left) * scaleX,
-    y: (event.clientY - box.top) * scaleY,
+export function createInput(canvas) {
+  const input = {
+    keys: new Set(),
+    mouse: { x: 0, y: 0, down: false, clicked: false },
+    pressed: new Set(), // keys pressed since the last poll, for edge triggers
   };
-}
 
-export function initInput(canvas) {
-  window.addEventListener('keydown', (event) => {
-    if (CAPTURED.has(event.code)) event.preventDefault();
-    keys[event.code] = true;
+  function keyName(e) {
+    return e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  }
+
+  window.addEventListener('keydown', (e) => {
+    const k = keyName(e);
+    if (!input.keys.has(k)) input.pressed.add(k);
+    input.keys.add(k);
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+      e.preventDefault();
+    }
   });
-  window.addEventListener('keyup', (event) => {
-    keys[event.code] = false;
+  window.addEventListener('keyup', (e) => {
+    input.keys.delete(keyName(e));
   });
   window.addEventListener('blur', () => {
-    for (const code of Object.keys(keys)) keys[code] = false;
-    mouse.down = false;
+    input.keys.clear();
   });
-  canvas.addEventListener('mousemove', (event) => {
-    const at = canvasPosition(canvas, event);
-    mouse.x = at.x;
-    mouse.y = at.y;
+
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    input.mouse.x = e.clientX - rect.left;
+    input.mouse.y = e.clientY - rect.top;
   });
-  canvas.addEventListener('mousedown', (event) => {
-    const at = canvasPosition(canvas, event);
-    mouse.x = at.x;
-    mouse.y = at.y;
-    mouse.down = true;
+  canvas.addEventListener('mousedown', (e) => {
+    input.mouse.down = true;
+    input.mouse.clicked = true;
+    if (e.button === 0) e.preventDefault();
   });
   window.addEventListener('mouseup', () => {
-    mouse.down = false;
+    input.mouse.down = false;
   });
-  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+
+  return input;
+}
+
+export function isDown(input, ...names) {
+  for (const n of names) if (input.keys.has(n)) return true;
+  return false;
+}
+
+// Was this key pressed since the last frame? Call once per frame per key.
+export function wasPressed(input, name) {
+  if (input.pressed.has(name)) {
+    input.pressed.delete(name);
+    return true;
+  }
+  return false;
+}
+
+export function endFrame(input) {
+  input.pressed.clear();
+  input.mouse.clicked = false;
 }

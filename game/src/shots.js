@@ -1,129 +1,125 @@
-// Staged, deterministic scenes for screenshots. Each shot seeds the RNG,
-// places the player and traffic, then runs the simulation forward a fixed
-// number of steps with scripted inputs so the frame is identical every time.
-// `?shot=start|play|chase|mission|ferry&seed=1` in the URL selects a scene.
-import { TILE, PLACES, ROADS_X, ROADS_Y } from './config.js';
-import { createWorld, startMission, update, STEP, makeCar, nearestRoad } from './world.js';
+// Puerto Luna — screenshot staging. When the page opens with ?shot=...,
+// the game sets up one fixed scene instead of the title screen, so the
+// screenshots are real renders of the game in a known state.
 
-function placePlayerInCar(world, x, y, angle) {
-  const p = world.player;
-  const car = makeCar(world.rng, x, y, angle, { color: '#d94f3d', name: 'Cometa' });
-  car.speed = 0;
-  world.cars.push(car);
-  p.onFoot = false;
-  p.car = car;
-  car.player = true;
-  car.ai = false;
+import { CFG } from './config.js';
+import { addHeat, layRoadblocks } from './wanted.js';
+
+function givePlayerCar(state, x, y, angle, speed, color) {
+  const car = {
+    kind: 'player',
+    x,
+    y,
+    angle,
+    speed,
+    color: color || '#d94f3d',
+    axis: 'h',
+    dir: 1,
+    hp: 100,
+    lastTurn: 0,
+  };
+  state.player.car = car;
+  state.player.onFoot = false;
+  state.player.x = x;
+  state.player.y = y;
+  state.player.angle = angle;
+  state.camera.x = x;
+  state.camera.y = y;
   return car;
 }
 
-// Road-following autopilot: steer toward a lookahead point on the road
-// centreline, 180px ahead of the car in the direction of the target, so
-// the car stays on the road instead of cutting across blocks.
-function driveToward(world, tx, ty, steps) {
-  for (let i = 0; i < steps; i += 1) {
-    const p = world.player;
-    const car = p.car;
-    if (Math.hypot(tx - car.x, ty - car.y) < 50) break; // arrived
-    if (!world.mission) break; // mission complete — stop
-    const road = nearestRoad(car.x, car.y);
-    const dx = tx - car.x;
-    const dy = ty - car.y;
-    let lx;
-    let ly;
-    if (Math.abs(dx) > Math.abs(dy)) {
-      // Travelling along a horizontal road.
-      ly = road.axis === 'h' ? road.at : car.y;
-      lx = car.x + Math.sign(dx) * 180;
-    } else {
-      lx = road.axis === 'v' ? road.at : car.x;
-      ly = car.y + Math.sign(dy) * 180;
-    }
-    const want = Math.atan2(ly - car.y, lx - car.x);
-    let diff = want - car.angle;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    update(world, {
-      up: true, down: false,
-      left: diff < -0.08, right: diff > 0.08,
-      handbrake: false, enterPressed: false,
-    }, STEP);
+function addTrafficNear(state, x, y) {
+  const spots = [
+    { x: x - 260, y: y - 46, angle: 0, color: '#3d7ad9' },
+    { x: x + 320, y: y + 46, angle: Math.PI, color: '#e8c53a' },
+    { x: x - 120, y: y + 200, angle: Math.PI / 2, color: '#5b8c5a' },
+  ];
+  for (const s of spots) {
+    state.cars.push({
+      kind: 'traffic',
+      x: s.x,
+      y: s.y,
+      angle: s.angle,
+      speed: 130,
+      color: s.color,
+      axis: 'h',
+      dir: 1,
+      hp: 100,
+      lastTurn: 0,
+    });
   }
 }
 
-export function stageShot(name, seed = 1) {
-  const world = createWorld(seed);
-  const p = world.player;
-  if (name === 'start') {
-    // Title screen: player parked by the plaza fountain at dusk, traffic passing.
-    placePlayerInCar(world, 30 * TILE, 32 * TILE, -Math.PI / 2);
-    p.cash = 120;
-    for (let i = 0; i < 90; i += 1) {
-      update(world, { up: false, down: false, left: false, right: false, handbrake: false, enterPressed: false }, STEP);
-    }
-    return { world, screen: 'title' };
+export function setupShot(state) {
+  const params = new URLSearchParams(window.location.search);
+  const shot = params.get('shot');
+  if (!shot) return;
+  state.shotMode = shot;
+  state.time = 6;
+  const lm = state.city.landmarks;
+
+  if (shot === 'start') {
+    // Title screen over the island, camera drifting over the centre.
+    state.mode = 'title';
+    state.camera.x = CFG.WORLD_W / 2;
+    state.camera.y = CFG.WORLD_H / 2;
+    return;
   }
-  if (name === 'play') {
-    // Driving down a downtown avenue with traffic and peds, mission 2 active.
-    startMission(world, 1);
-    placePlayerInCar(world, 44 * TILE + 20, 20 * TILE + 60, Math.PI / 2);
-    p.cash = 420;
-    driveToward(world, 44 * TILE + 20, 30 * TILE, 150);
-    return { world, screen: 'play' };
+
+  if (shot === 'play') {
+    // Rico driving through town on the Parcel Run, buyer waiting at the market.
+    state.mode = 'play';
+    state.cash = 850;
+    state.hasGun = true;
+    state.missionIdx = 1;
+    state.stepIdx = 1;
+    state.missionTimer = 58;
+    givePlayerCar(state, 1500, 1100, 0, 280, '#d94f3d');
+    addTrafficNear(state, 1500, 1100);
+    state.marker = { x: lm.market.x, y: lm.market.y };
+    state.objective = 'Deliver to the market buyer';
+    state.objectiveTimer = 58;
+    return;
   }
-  if (name === 'chase') {
-    // Wanted 3, police cars closing in on a downtown avenue.
-    startMission(world, 2);
-    placePlayerInCar(world, 32 * TILE + 20, 32 * TILE + 40, 0);
-    p.cash = 760;
-    p.wanted = 3;
-    p.heat = 1;
-    driveToward(world, 44 * TILE, 32 * TILE + 40, 170);
-    // Let the police catch up a little.
-    for (let i = 0; i < 120; i += 1) {
-      update(world, { up: true, down: false, left: false, right: false, handbrake: false, enterPressed: false }, STEP);
+
+  if (shot === 'chase') {
+    // Three stars, three police cars closing in, a roadblock ahead.
+    state.mode = 'play';
+    state.cash = 1420;
+    state.hasGun = true;
+    state.missionIdx = 2;
+    state.stepIdx = 0;
+    givePlayerCar(state, 1500, 1100, 0, 320, '#e8e8e8');
+    addTrafficNear(state, 1500, 1100);
+    state.player.x = 1500;
+    state.player.y = 1100;
+    addHeat(state, 45);
+    state.lastCrimeAt = state.time;
+    layRoadblocks(state);
+    const spots = [
+      { x: 1150, y: 1010, angle: 0.3 },
+      { x: 1180, y: 1240, angle: -0.2 },
+      { x: 1850, y: 980, angle: Math.PI - 0.4 },
+    ];
+    for (const s of spots) {
+      state.police.push({ x: s.x, y: s.y, angle: s.angle, speed: 300, hp: 100 });
     }
-    return { world, screen: 'play' };
+    state.objective = 'Lose the heat — hideout or lay low';
+    return;
   }
-  if (name === 'mission') {
-    // Final job, played honestly through the mission engine: meet the crew
-    // at the beach (step 1), then deliver the score to the yacht (step 2).
-    startMission(world, 5);
-    p.cash = 400;
-    // Step 1: stand on the beach marker.
-    p.x = PLACES.beach.x;
-    p.y = PLACES.beach.y - 40;
-    for (let i = 0; i < 30; i += 1) {
-      update(world, { up: false, down: false, left: false, right: false, handbrake: false, enterPressed: false }, STEP);
-    }
-    // Step 2: drive to the marina yacht and deliver.
-    const car = placePlayerInCar(world, 56 * TILE - 20, 20 * TILE + 60, -Math.PI / 2);
-    car.speed = 0;
-    driveToward(world, PLACES.marina.x, PLACES.marina.y, 400);
-    // The mission completes inside update(); the banner is real.
-    return { world, screen: 'play' };
+
+  if (shot === 'mission') {
+    // The island is Rico's: all seven missions done, the Big Score banked.
+    state.mode = 'play';
+    state.cash = 3200;
+    state.hasGun = true;
+    state.missionIdx = 7;
+    state.stepIdx = 0;
+    state.stats.missionsDone = 7;
+    state.stats.faresDone = 3;
+    givePlayerCar(state, 2800, 420, -Math.PI / 2, 0, '#d94f3d');
+    state.banner = { title: 'MISSION COMPLETE', sub: 'The Big Score  +$2,500', t: Infinity };
+    state.objective = 'Puerto Luna is yours — free roam';
+    return;
   }
-  if (name === 'ferry') {
-    // The last ferry: Rico holds the terminal at three stars while the
-    // crew loads the boat, a spike-strip roadblock across the road ahead.
-    startMission(world, 6);
-    p.cash = 5200;
-    // Step 1: stand on the ferry marker.
-    p.x = PLACES.ferry.x;
-    p.y = PLACES.ferry.y - 40;
-    for (let i = 0; i < 30; i += 1) {
-      update(world, { up: false, down: false, left: false, right: false, handbrake: false, enterPressed: false }, STEP);
-    }
-    // Step 2: the holdout raises the heat to three stars on its own;
-    // hold the marker while the timer runs, in the car for the frame.
-    const car = placePlayerInCar(world, 38 * TILE - 20, 59 * TILE - 60, -Math.PI / 2);
-    car.speed = 0;
-    for (let i = 0; i < 240; i += 1) {
-      update(world, { up: false, down: false, left: false, right: false, handbrake: false, enterPressed: false }, STEP);
-    }
-    return { world, screen: 'play' };
-  }
-  // Default: plain gameplay frame.
-  placePlayerInCar(world, 32 * TILE, 32 * TILE, -Math.PI / 2);
-  return { world, screen: 'play' };
 }

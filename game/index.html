@@ -1,25 +1,49 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="Puerto Luna — an original open-world crime story on a sun-soaked island. Seven jobs, the Luna PD, and one last ferry." />
-<title>Puerto Luna — open-world crime on a sun-soaked island</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Puerto Luna — an open-world crime story</title>
 <style>
-  /* Full-window canvas, letterboxed to 16:9. The game draws everything
-     itself; this page is only the frame around it. */
-  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0b0e14; }
-  body { display: flex; align-items: center; justify-content: center; }
-  canvas {
-    width: min(100vw, calc(100vh * 16 / 9));
-    height: min(100vh, calc(100vw * 9 / 16));
-    background: #7fae5a;
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0b1620;
+    height: 100%;
+    font-family: system-ui, -apple-system, sans-serif;
   }
+  #wrap {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+  canvas {
+    display: block;
+    width: min(1280px, 96vw);
+    height: auto;
+    border-radius: 10px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+    background: #14607f;
+  }
+  #note {
+    color: #9fb4c4;
+    font-size: 14px;
+    margin: 0;
+    text-align: center;
+  }
+  #note b { color: #ffd34d; }
 </style>
 </head>
 <body>
-<canvas id="game" width="1280" height="720" aria-label="Puerto Luna game canvas"></canvas>
-<noscript>Puerto Luna needs JavaScript to play.</noscript>
+<div id="wrap">
+  <canvas id="game" width="1280" height="720"></canvas>
+  <p id="note"><b>PUERTO LUNA</b> — WASD move / drive · E enter &amp; exit cars, pick up fares · Click to shoot · ESC pause · M mute</p>
+</div>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

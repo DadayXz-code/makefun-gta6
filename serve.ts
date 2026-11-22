@@ -1,86 +1,65 @@
-// A small static server for playing Puerto Luna locally (Node 22,
-// standard library only). Run `node serve.ts` and open
-// http://localhost:8080 — it serves game/ and nothing else, with no build
-// step. This is a development convenience, not a server for the internet:
-// it only listens on localhost, refuses paths that escape game/, and
-// sends no-store so a changed file is never cached.
-import { readFileSync, statSync } from 'node:fs';
+// Puerto Luna — a tiny static server for game/, so the entry can be played
+// locally without a build step: `node serve.ts` serves game/ on
+// http://localhost:8080 (or --port <n>). Development convenience only.
+import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { extname, join, resolve, sep } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const GAME_ROOT = resolve(fileURLToPath(new URL('./game', import.meta.url)));
+const root = resolve(fileURLToPath(new URL('./game', import.meta.url)));
+const flag = process.argv.indexOf('--port');
+const wanted = flag === -1 ? 8080 : Number(process.argv[flag + 1]);
+const port = Number.isInteger(wanted) && wanted > 0 && wanted < 65536 ? wanted : 8080;
 
-const args = process.argv.slice(2);
-const portFlag = args.indexOf('--port');
-const wantedPort = portFlag === -1 ? 8080 : Number(args[portFlag + 1]);
-const PORT = Number.isInteger(wantedPort) && wantedPort > 0 && wantedPort < 65536 ? wantedPort : 8080;
+const types = new Map([
+  ['.html', 'text/html; charset=utf-8'],
+  ['.js', 'text/javascript; charset=utf-8'],
+  ['.mjs', 'text/javascript; charset=utf-8'],
+  ['.css', 'text/css; charset=utf-8'],
+  ['.json', 'application/json; charset=utf-8'],
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.gif', 'image/gif'],
+  ['.webp', 'image/webp'],
+  ['.svg', 'image/svg+xml'],
+  ['.wav', 'audio/wav'],
+  ['.mp3', 'audio/mpeg'],
+  ['.ogg', 'audio/ogg'],
+  ['.txt', 'text/plain; charset=utf-8'],
+]);
 
-// Content types a browser game needs; anything else is an octet stream.
-const TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.wav': 'audio/wav',
-  '.mp3': 'audio/mpeg',
-  '.ogg': 'audio/ogg',
-  '.wasm': 'application/wasm',
-  '.txt': 'text/plain; charset=utf-8',
-};
-
-function answer(response, status, body, type = 'text/plain; charset=utf-8') {
-  response.writeHead(status, { 'content-type': type, 'content-length': Buffer.byteLength(body) });
-  response.end(body);
-}
-
-const server = createServer((request, response) => {
-  let pathname;
+const server = createServer((req, res) => {
+  let path = '/';
   try {
-    pathname = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
+    path = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
   } catch {
-    answer(response, 400, 'bad request');
+    res.writeHead(400).end('bad request');
     return;
   }
-  if (pathname.endsWith('/')) pathname += 'index.html';
-
-  // Join onto the game root and refuse anything that climbs out of it.
-  const target = resolve(join(GAME_ROOT, `.${sep}${pathname.replace(/^\/+/, '')}`));
-  if (target !== GAME_ROOT && !target.startsWith(GAME_ROOT + sep)) {
-    answer(response, 403, 'forbidden');
+  if (path.endsWith('/')) path += 'index.html';
+  const file = resolve(join(root, normalize(path)));
+  if (file !== root && !file.startsWith(root + sep)) {
+    res.writeHead(403).end('forbidden');
     return;
   }
-  let body;
+  let size;
   try {
-    if (!statSync(target).isFile()) throw new Error('not a file');
-    body = readFileSync(target);
+    const info = statSync(file);
+    if (!info.isFile()) throw new Error('not a file');
+    size = info.size;
   } catch {
-    answer(response, 404, 'not found');
+    res.writeHead(404).end('not found');
     return;
   }
-  const headers = {
-    'content-type': TYPES[extname(target).toLowerCase()] ?? 'application/octet-stream',
-    'content-length': body.length,
+  res.writeHead(200, {
+    'content-type': types.get(extname(file).toLowerCase()) ?? 'application/octet-stream',
+    'content-length': size,
     'cache-control': 'no-store',
-  };
-  // A HEAD request gets the headers and no body.
-  if (request.method === 'HEAD') {
-    response.writeHead(200, headers);
-    response.end();
-    return;
-  }
-  response.writeHead(200, headers);
-  response.end(body);
+  });
+  createReadStream(file).pipe(res);
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Puerto Luna: game/ is on http://localhost:${PORT}`);
+server.listen(port, '127.0.0.1', () => {
+  console.log(`game/ is on http://localhost:${port}`);
 });

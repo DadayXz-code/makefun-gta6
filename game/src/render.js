@@ -2,7 +2,8 @@
 // player, the HUD and the minimap. No assets are loaded from anywhere —
 // every pixel is drawn procedurally from the world state.
 import { TILE, WORLD, ROADS_X, ROADS_Y, ROAD_HALF, PLACES, PALETTE, VIEW_W, VIEW_H } from './config.js';
-import { onRoad, districtAt, missionStep, missionTarget } from './world.js';
+import { MISSIONS, onRoad, districtAt, missionStep, missionTarget } from './world.js';
+import { hideoutFactor } from './wanted.js';
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -208,6 +209,29 @@ function drawTrees(ctx, world, cam) {
   }
 }
 
+function drawRoadblocks(ctx, world) {
+  for (const block of world.roadblocks || []) {
+    if (block.hit) continue;
+    ctx.save();
+    ctx.translate(block.x, block.y);
+    ctx.rotate(block.angle);
+    // A striped spike barrier across the road, blinking as it ages.
+    const blink = block.ttl < 5 ? (Math.floor(performance.now() / 200) % 2 === 0 ? 1 : 0.45) : 1;
+    ctx.globalAlpha = blink;
+    ctx.fillStyle = '#20242e';
+    ctx.fillRect(-34, -8, 68, 16);
+    for (let i = -30; i < 30; i += 12) {
+      ctx.fillStyle = (i / 12) % 2 === 0 ? '#ffd23d' : '#f5f5f5';
+      ctx.fillRect(i, -8, 12, 16);
+    }
+    ctx.fillStyle = '#ff2d2d';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PD', 0, 3);
+    ctx.restore();
+  }
+}
+
 function drawMarker(ctx, world) {
   const target = missionTarget(world);
   if (!target) return;
@@ -276,6 +300,13 @@ function drawMinimap(ctx, world) {
     ctx.arc(x + cop.x * k, y + cop.y * k, 3, 0, Math.PI * 2);
     ctx.fill();
   }
+  for (const block of world.roadblocks || []) {
+    if (block.hit) continue;
+    ctx.fillStyle = '#ff8c1a';
+    ctx.beginPath();
+    ctx.arc(x + block.x * k, y + block.y * k, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
   const p = world.player;
   const px = p.car ? p.car.x : p.x;
   const py = p.car ? p.car.y : p.y;
@@ -327,6 +358,12 @@ function drawHud(ctx, world) {
     ctx.fillStyle = i < Math.floor(p.wanted) ? '#ffd23d' : 'rgba(255,255,255,0.25)';
     ctx.fillText('★', 24 + i * 34, 117);
   }
+  // Hiding in a hideout cools the heat twice as fast — say so.
+  if (p.wanted > 0 && hideoutFactor(world) > 1) {
+    ctx.fillStyle = '#7dd93d';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillText('HIDDEN — heat cooling fast', 28, 144);
+  }
   // Mission panel
   const step = missionStep(world);
   if (world.mission && step) {
@@ -336,7 +373,7 @@ function drawHud(ctx, world) {
     ctx.fill();
     ctx.fillStyle = '#ffd23d';
     ctx.font = 'bold 16px sans-serif';
-    ctx.fillText(`MISSION ${world.missionIndex + 1}/${6}: ${lines[0]}`, 28, VIEW_H - 62);
+    ctx.fillText(`MISSION ${world.missionIndex + 1}/${MISSIONS.length}: ${lines[0]}`, 28, VIEW_H - 62);
     ctx.fillStyle = '#ffffff';
     ctx.font = '14px sans-serif';
     ctx.fillText(lines[1], 28, VIEW_H - 38);
@@ -385,7 +422,7 @@ function drawTitle(ctx, world) {
   ctx.fillText('An open-world crime story on a sun-soaked island', VIEW_W / 2, 240);
   ctx.font = '16px sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.fillText('Rico Salas is back in Puerto Luna. Mama Luz has six jobs for him —', VIEW_W / 2, 300);
+  ctx.fillText('Rico Salas is back in Puerto Luna. Mama Luz has seven jobs for him —', VIEW_W / 2, 300);
   ctx.fillText('and the Luna PD has other plans.', VIEW_W / 2, 324);
   ctx.fillStyle = '#7dd93d';
   ctx.font = 'bold 20px sans-serif';
@@ -429,6 +466,7 @@ export function render(ctx, world, screen) {
   drawBuildings(ctx, world, cam);
   drawTrees(ctx, world, cam);
   drawMarker(ctx, world);
+  drawRoadblocks(ctx, world);
   const allCars = world.cars.concat(world.police);
   for (const car of allCars) {
     if (car.dead) continue;
@@ -460,7 +498,7 @@ export function render(ctx, world, screen) {
     ctx.fillText('PUERTO LUNA IS YOURS', VIEW_W / 2, 300);
     ctx.fillStyle = '#ffffff';
     ctx.font = '18px sans-serif';
-    ctx.fillText(`Final cash: $${p.cash} · Cars stolen: ${world.stats.carsStolen} · Cops lost: ${world.stats.copsLost}`, VIEW_W / 2, 340);
+    ctx.fillText(`Final cash: $${p.cash} · Cars stolen: ${world.stats.carsStolen} · Cops lost: ${world.stats.copsLost} · Spike strips hit: ${world.stats.spikesHit}`, VIEW_W / 2, 340);
     ctx.textAlign = 'left';
   }
 }

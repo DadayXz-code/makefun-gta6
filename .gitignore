@@ -1,2 +1,8 @@
+# Build outputs of the entry program (see main.ts): the dossier output
+# directory and the older second output directory. Never committed.
 out/
 out2/
+
+# Dependencies and editor files, if any ever appear.
+node_modules/
+.DS_Store

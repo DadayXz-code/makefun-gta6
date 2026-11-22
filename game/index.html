@@ -3,15 +3,23 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Puerto Luna — an open-world crime story</title>
+<meta name="description" content="Puerto Luna — an original open-world crime story on a sun-soaked island. Seven jobs, the Luna PD, and one last ferry." />
+<title>Puerto Luna — open-world crime on a sun-soaked island</title>
 <style>
-  html, body { margin: 0; padding: 0; background: #0b0e14; height: 100%; overflow: hidden; }
+  /* Full-window canvas, letterboxed to 16:9. The game draws everything
+     itself; this page is only the frame around it. */
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0b0e14; }
   body { display: flex; align-items: center; justify-content: center; }
-  canvas { width: min(100vw, calc(100vh * 16 / 9)); height: min(100vh, calc(100vw * 9 / 16)); image-rendering: auto; background: #7fae5a; }
+  canvas {
+    width: min(100vw, calc(100vh * 16 / 9));
+    height: min(100vh, calc(100vw * 9 / 16));
+    background: #7fae5a;
+  }
 </style>
 </head>
 <body>
-<canvas id="game" width="1280" height="720"></canvas>
+<canvas id="game" width="1280" height="720" aria-label="Puerto Luna game canvas"></canvas>
+<noscript>Puerto Luna needs JavaScript to play.</noscript>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

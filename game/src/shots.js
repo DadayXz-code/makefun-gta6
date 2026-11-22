@@ -1,7 +1,7 @@
 // Staged, deterministic scenes for screenshots. Each shot seeds the RNG,
 // places the player and traffic, then runs the simulation forward a fixed
 // number of steps with scripted inputs so the frame is identical every time.
-// `?shot=start|play|chase|mission&seed=1` in the URL selects a scene.
+// `?shot=start|play|chase|mission|ferry&seed=1` in the URL selects a scene.
 import { TILE, PLACES, ROADS_X, ROADS_Y } from './config.js';
 import { createWorld, startMission, update, STEP, makeCar, nearestRoad } from './world.js';
 
@@ -101,6 +101,26 @@ export function stageShot(name, seed = 1) {
     car.speed = 0;
     driveToward(world, PLACES.marina.x, PLACES.marina.y, 400);
     // The mission completes inside update(); the banner is real.
+    return { world, screen: 'play' };
+  }
+  if (name === 'ferry') {
+    // The last ferry: Rico holds the terminal at three stars while the
+    // crew loads the boat, a spike-strip roadblock across the road ahead.
+    startMission(world, 6);
+    p.cash = 5200;
+    // Step 1: stand on the ferry marker.
+    p.x = PLACES.ferry.x;
+    p.y = PLACES.ferry.y - 40;
+    for (let i = 0; i < 30; i += 1) {
+      update(world, { up: false, down: false, left: false, right: false, handbrake: false, enterPressed: false }, STEP);
+    }
+    // Step 2: the holdout raises the heat to three stars on its own;
+    // hold the marker while the timer runs, in the car for the frame.
+    const car = placePlayerInCar(world, 38 * TILE - 20, 59 * TILE - 60, -Math.PI / 2);
+    car.speed = 0;
+    for (let i = 0; i < 240; i += 1) {
+      update(world, { up: false, down: false, left: false, right: false, handbrake: false, enterPressed: false }, STEP);
+    }
     return { world, screen: 'play' };
   }
   // Default: plain gameplay frame.

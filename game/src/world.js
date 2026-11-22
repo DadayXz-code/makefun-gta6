@@ -1,8 +1,9 @@
 // World state for Puerto Luna: the city, its traffic, pedestrians, police,
 // the player, and the story missions. Everything the game simulates lives
 // here; rendering lives in render.js.
-import { TILE, WORLD, ROADS_X, ROADS_Y, ROAD_HALF, DISTRICTS, PLACES, CAR_COLORS, CAR_NAMES, PALETTE } from './config.js';
+import { TILE, WORLD, ROADS_X, ROADS_Y, ROAD_HALF, DISTRICTS, PLACES, CAR_COLORS, CAR_NAMES, PALETTE, HOLDOUT_STARS, HOLDOUT_SECONDS, POLICE_RAM_DPS } from './config.js';
 import { makeRng, pick, range, rangeInt } from './random.js';
+import { updateRoadblocks, hideoutFactor } from './wanted.js';
 
 export const STEP = 1 / 60;
 
@@ -60,6 +61,16 @@ export const MISSIONS = [
       { kind: 'deliver', at: 'marina', time: 100, text: 'Deliver the score to the yacht (100s)' },
     ],
     reward: 2500,
+  },
+  {
+    id: 'last-ferry', title: 'The Last Ferry', giver: 'Mama Luz',
+    brief: 'The crew leaves on the last ferry tonight — but the Luna PD has the terminal surrounded. Hold it, then run.',
+    steps: [
+      { kind: 'goto', at: 'ferry', text: 'Reach the Ferry Terminal' },
+      { kind: 'holdout', at: 'ferry', stars: HOLDOUT_STARS, holdFor: HOLDOUT_SECONDS, text: 'Hold the terminal at 3+ stars for 18s' },
+      { kind: 'escape', at: 'mamas', text: "Escape to Mama Luz's Cantina" },
+    ],
+    reward: 3500,
   },
 ];
 
@@ -205,8 +216,11 @@ export function createWorld(seed = 1) {
     banner: null,
     bannerT: 0,
     save: null,
-    stats: { carsStolen: 0, pedsHit: 0, shotsFired: 0, copsLost: 0 },
+    stats: { carsStolen: 0, pedsHit: 0, shotsFired: 0, copsLost: 0, spikesHit: 0 },
     muted: false,
+    roadblocks: [],
+    roadblockT: 0,
+    holdoutT: null,
   };
   for (let i = 0; i < 14; i += 1) world.cars.push(spawnTrafficCar(rng, world));
   for (let i = 0; i < 26; i += 1) world.peds.push(makePed(rng));
@@ -219,6 +233,7 @@ export function startMission(world, index) {
   world.mission = MISSIONS[index] || null;
   world.missionStep = 0;
   world.missionTimer = 0;
+  world.holdoutT = null;
   if (world.mission) {
     const step = world.mission.steps[0];
     if (step.time) world.missionTimer = step.time;
@@ -408,7 +423,7 @@ function updatePolice(world, dt) {
     if (d < 46) {
       // Ram: damage the player's car or bust the player on foot.
       if (p.car) {
-        p.car.hp -= 14 * dt;
+        p.car.hp -= POLICE_RAM_DPS * dt;
         p.car.speed *= 0.98;
         if (p.car.hp <= 0) explodeCar(world, p.car);
       } else {
@@ -433,7 +448,8 @@ function updatePolice(world, dt) {
   if (p.wanted > 0) {
     const nearest = world.police.reduce((m, c) => Math.min(m, Math.hypot(c.x - px, c.y - py)), 1e9);
     if (nearest > 520) {
-      p.heat -= dt / 24;
+      // Hiding in a hideout cools the heat twice as fast.
+      p.heat -= (dt / 24) * hideoutFactor(world);
       if (p.heat <= 0) {
         p.wanted = Math.max(0, p.wanted - 1);
         p.heat = 1;
@@ -553,6 +569,37 @@ function updateMission(world, dt) {
     if (p.wanted >= step.stars) advanceStep(world);
   } else if (step.kind === 'cool') {
     if (p.wanted === 0) advanceStep(world);
+  } else if (step.kind === 'holdout') {
+    // Holding the terminal: the heat is raised to the step's stars when
+    // the step starts, and the timer only runs while Rico stays hot and
+    // on the marker. Leaving the marker drains the timer; losing the
+    // heat freezes it.
+    if (world.holdoutT === null || world.holdoutT === undefined) {
+      world.holdoutT = 0;
+      if (p.wanted < step.stars) addHeat(world, step.stars - p.wanted, 'the ferry job');
+      showBanner(world, 'THE HEAT IS ON', `Hold the terminal at ${step.stars}+ stars — ${step.holdFor}s.`);
+    }
+    const near = target && Math.hypot(target.x - px, target.y - py) < 200;
+    if (near && p.wanted >= step.stars) {
+      world.holdoutT += dt;
+      if (world.holdoutT >= step.holdFor) {
+        world.holdoutT = null;
+        // The crew has your back: they patch the car up, the PD abandons
+        // its roadblocks and loses the player in the confusion, and the
+        // heat eases a notch, so the escape across the island is winnable.
+        if (p.car) {
+          p.car.hp = Math.max(p.car.hp, 70);
+          p.car.smoke = 0;
+        }
+        world.roadblocks = [];
+        world.police = [];
+        p.wanted = Math.max(0, p.wanted - 1);
+        showBanner(world, 'CREW HAS YOUR BACK', 'The PD lost you in the confusion. Now run!');
+        advanceStep(world);
+      }
+    } else if (!near) {
+      world.holdoutT = Math.max(0, world.holdoutT - dt);
+    }
   } else if (step.kind === 'race') {
     if (target && Math.hypot(target.x - px, target.y - py) < 90) {
       world.racePoint += 1;
@@ -617,6 +664,7 @@ export function update(world, input, dt) {
   }
   for (const ped of world.peds) updatePed(world, ped, dt);
   updatePolice(world, dt);
+  updateRoadblocks(world, dt);
   updateMission(world, dt);
   if (p.hp <= 0 && !p.wasted) {
     p.wasted = true;

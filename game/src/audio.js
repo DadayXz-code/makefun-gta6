@@ -1,120 +1,149 @@
-// Procedural WebAudio: engine hum, sirens, pickups, gunshots and crashes.
-// Nothing is loaded; every sound is synthesized.
+// Procedural sound for Puerto Luna — everything is synthesized with the
+// Web Audio API, so the game ships no audio files at all.
+//
+// The set: an engine hum whose pitch follows the car's speed, a two-tone
+// police siren, a gunshot crack, a crash thud for wrecks and spike strips,
+// and a bright chime for mission payouts. Nothing starts until the player
+// presses a key (`ensure()`), because browsers block audio before the
+// first user gesture; `setMuted` silences the master gain without
+// tearing the graph down.
 export class Sound {
   constructor() {
-    this.ctx = null;
+    this.context = null;
+    this.master = null;
     this.muted = false;
     this.engineOsc = null;
     this.engineGain = null;
     this.sirenOsc = null;
     this.sirenGain = null;
+    this.noiseBuffer = null;
   }
 
   ensure() {
-    if (this.ctx) return;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    this.ctx = new AC();
-    this.master = this.ctx.createGain();
-    this.master.gain.value = 0.5;
-    this.master.connect(this.ctx.destination);
+    if (!this.context) {
+      const Ctor = window.AudioContext || window.webkitAudioContext;
+      if (!Ctor) return;
+      this.context = new Ctor();
+      this.master = this.context.createGain();
+      this.master.gain.value = this.muted ? 0 : 0.5;
+      this.master.connect(this.context.destination);
+      const length = this.context.sampleRate;
+      this.noiseBuffer = this.context.createBuffer(1, length, this.context.sampleRate);
+      const data = this.noiseBuffer.getChannelData(0);
+      for (let i = 0; i < length; i += 1) data[i] = Math.random() * 2 - 1;
+    }
+    if (this.context.state === 'suspended') void this.context.resume();
   }
 
-  setMuted(m) {
-    this.muted = m;
-    if (this.master) this.master.gain.value = m ? 0 : 0.5;
+  setMuted(muted) {
+    this.muted = muted;
+    if (this.master) this.master.gain.value = muted ? 0 : 0.5;
   }
 
-  blip(freq = 660, dur = 0.12, type = 'square', vol = 0.2) {
-    if (!this.ctx || this.muted) return;
-    const t = this.ctx.currentTime;
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    o.type = type;
-    o.frequency.value = freq;
-    g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    o.connect(g);
-    g.connect(this.master);
-    o.start(t);
-    o.stop(t + dur);
+  burst(when, duration, filterFreq, peak) {
+    if (!this.context) return;
+    const src = this.context.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = this.context.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = filterFreq;
+    const gain = this.context.createGain();
+    gain.gain.setValueAtTime(peak, when);
+    gain.gain.exponentialRampToValueAtTime(0.001, when + duration);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.master);
+    src.start(when);
+    src.stop(when + duration + 0.02);
   }
 
-  crash() {
-    if (!this.ctx || this.muted) return;
-    const t = this.ctx.currentTime;
-    const len = this.ctx.sampleRate * 0.25;
-    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    const g = this.ctx.createGain();
-    g.gain.value = 0.4;
-    src.connect(g);
-    g.connect(this.master);
-    src.start(t);
+  tone(when, freq, duration, type, peak) {
+    if (!this.context) return;
+    const osc = this.context.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, when);
+    const gain = this.context.createGain();
+    gain.gain.setValueAtTime(peak, when);
+    gain.gain.exponentialRampToValueAtTime(0.001, when + duration);
+    osc.connect(gain);
+    gain.connect(this.master);
+    osc.start(when);
+    osc.stop(when + duration + 0.02);
   }
 
   shot() {
-    if (!this.ctx || this.muted) return;
-    const t = this.ctx.currentTime;
-    const len = this.ctx.sampleRate * 0.08;
-    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    const g = this.ctx.createGain();
-    g.gain.value = 0.5;
-    const f = this.ctx.createBiquadFilter();
-    f.type = 'highpass';
-    f.frequency.value = 900;
-    src.connect(f);
-    f.connect(g);
-    g.connect(this.master);
-    src.start(t);
+    if (!this.context || this.muted) return;
+    const now = this.context.currentTime;
+    this.burst(now, 0.14, 2600, 0.9);
+    this.tone(now, 150, 0.09, 'square', 0.25);
   }
 
-  engine(speed, on) {
-    if (!this.ctx) return;
+  crash() {
+    if (!this.context || this.muted) return;
+    const now = this.context.currentTime;
+    this.burst(now, 0.5, 420, 1.0);
+    this.tone(now, 70, 0.4, 'sine', 0.6);
+  }
+
+  chime() {
+    if (!this.context || this.muted) return;
+    const now = this.context.currentTime;
+    this.tone(now, 660, 0.18, 'sine', 0.3);
+    this.tone(now + 0.12, 880, 0.26, 'sine', 0.3);
+  }
+
+  horn() {
+    if (!this.context || this.muted) return;
+    const now = this.context.currentTime;
+    this.tone(now, 370, 0.22, 'square', 0.22);
+    this.tone(now, 466, 0.22, 'square', 0.18);
+  }
+
+  engine(speed, inCar) {
+    if (!this.context) return;
+    if (!inCar) {
+      if (this.engineOsc) {
+        this.engineGain.gain.setTargetAtTime(0, this.context.currentTime, 0.1);
+      }
+      return;
+    }
     if (!this.engineOsc) {
-      this.engineOsc = this.ctx.createOscillator();
+      this.engineOsc = this.context.createOscillator();
       this.engineOsc.type = 'sawtooth';
-      this.engineGain = this.ctx.createGain();
+      this.engineGain = this.context.createGain();
       this.engineGain.gain.value = 0;
-      const f = this.ctx.createBiquadFilter();
-      f.type = 'lowpass';
-      f.frequency.value = 600;
-      this.engineOsc.connect(f);
-      f.connect(this.engineGain);
+      this.engineOsc.connect(this.engineGain);
       this.engineGain.connect(this.master);
       this.engineOsc.start();
     }
-    const target = on && !this.muted ? 0.04 + Math.min(0.08, Math.abs(speed) / 340 * 0.08) : 0;
-    this.engineGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.1);
-    this.engineOsc.frequency.setTargetAtTime(55 + Math.abs(speed) * 0.55, this.ctx.currentTime, 0.1);
+    const now = this.context.currentTime;
+    this.engineOsc.frequency.setTargetAtTime(55 + speed * 0.45, now, 0.08);
+    this.engineGain.gain.setTargetAtTime(this.muted ? 0 : 0.11, now, 0.08);
   }
 
   siren(on) {
-    if (!this.ctx) return;
+    if (!this.context) return;
+    if (!on) {
+      if (this.sirenOsc) this.sirenGain.gain.setTargetAtTime(0, this.context.currentTime, 0.15);
+      return;
+    }
     if (!this.sirenOsc) {
-      this.sirenOsc = this.ctx.createOscillator();
+      this.sirenOsc = this.context.createOscillator();
       this.sirenOsc.type = 'triangle';
-      this.sirenGain = this.ctx.createGain();
+      this.sirenGain = this.context.createGain();
       this.sirenGain.gain.value = 0;
+      const lfo = this.context.createOscillator();
+      lfo.frequency.value = 0.9;
+      const lfoGain = this.context.createGain();
+      lfoGain.gain.value = 240;
+      lfo.connect(lfoGain);
+      lfoGain.connect(this.sirenOsc.frequency);
+      this.sirenOsc.frequency.value = 780;
       this.sirenOsc.connect(this.sirenGain);
       this.sirenGain.connect(this.master);
       this.sirenOsc.start();
-      this.sirenLfo = this.ctx.createOscillator();
-      this.sirenLfo.frequency.value = 0.7;
-      const lfoGain = this.ctx.createGain();
-      lfoGain.gain.value = 220;
-      this.sirenLfo.connect(lfoGain);
-      lfoGain.connect(this.sirenOsc.frequency);
-      this.sirenOsc.frequency.value = 880;
-      this.sirenLfo.start();
+      lfo.start();
     }
-    this.sirenGain.gain.setTargetAtTime(on && !this.muted ? 0.035 : 0, this.ctx.currentTime, 0.2);
+    this.sirenGain.gain.setTargetAtTime(this.muted ? 0 : 0.05, this.context.currentTime, 0.15);
   }
 }

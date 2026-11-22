@@ -4,6 +4,7 @@
 import { TILE, WORLD, ROADS_X, ROADS_Y, ROAD_HALF, DISTRICTS, PLACES, CAR_COLORS, CAR_NAMES, PALETTE, HOLDOUT_STARS, HOLDOUT_SECONDS, POLICE_RAM_DPS } from './config.js';
 import { makeRng, pick, range, rangeInt } from './random.js';
 import { updateRoadblocks, hideoutFactor } from './wanted.js';
+import { setupFares, updateFares } from './fares.js';
 
 export const STEP = 1 / 60;
 
@@ -222,6 +223,7 @@ export function createWorld(seed = 1) {
     roadblockT: 0,
     holdoutT: null,
   };
+  setupFares(world);
   for (let i = 0; i < 14; i += 1) world.cars.push(spawnTrafficCar(rng, world));
   for (let i = 0; i < 26; i += 1) world.peds.push(makePed(rng));
   startMission(world, 0);
@@ -379,6 +381,9 @@ function updateTrafficCar(world, car, dt) {
 }
 
 function updatePed(world, ped, dt) {
+  // A customer waiting for a taxi stands still — they are not wandering
+  // off while Rico drives over to pick them up.
+  if (world.activeFare && world.activeFare.state === 'waiting' && world.activeFare.ped === ped) return;
   if (ped.panic > 0) {
     ped.panic -= dt;
     ped.speed = 95;
@@ -665,6 +670,7 @@ export function update(world, input, dt) {
   for (const ped of world.peds) updatePed(world, ped, dt);
   updatePolice(world, dt);
   updateRoadblocks(world, dt);
+  updateFares(world, dt);
   updateMission(world, dt);
   if (p.hp <= 0 && !p.wasted) {
     p.wasted = true;

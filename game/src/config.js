@@ -134,3 +134,18 @@ export const POLICE_RAM_DPS = 14;
 // terminal at that heat before the crew finishes loading the ferry.
 export const HOLDOUT_STARS = 3;
 export const HOLDOUT_SECONDS = 18;
+
+// --- Taxi fares (see fares.js) ---
+
+// Islanders flag Rico down once the game has been running a little
+// while, then keep coming while he drives: a fare is a paid trip across
+// the island, and a fast one pays a tip.
+export const FARE_FIRST_DELAY = 12;
+export const FARE_SPAWN_INTERVAL = 25;
+export const FARE_WAIT_TIMEOUT = 45;
+export const FARE_TIME_LIMIT = 90;
+export const FARE_BASE = 40;
+export const FARE_PER_PX = 0.1;
+export const FARE_TIP_MULT = 1.5;
+export const FARE_PICKUP_RADIUS = 55;
+export const FARE_DROPOFF_RADIUS = 95;

@@ -4,6 +4,7 @@
 import { TILE, WORLD, ROADS_X, ROADS_Y, ROAD_HALF, PLACES, PALETTE, VIEW_W, VIEW_H } from './config.js';
 import { MISSIONS, onRoad, districtAt, missionStep, missionTarget } from './world.js';
 import { hideoutFactor } from './wanted.js';
+import { drawFares } from './fares.js';
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -307,6 +308,17 @@ function drawMinimap(ctx, world) {
     ctx.arc(x + block.x * k, y + block.y * k, 3, 0, Math.PI * 2);
     ctx.fill();
   }
+  // A fare on the map: gold dot on the waiting customer or the
+  // destination, so Rico can find the next paid trip at a glance.
+  const fare = world.activeFare;
+  if (fare) {
+    const fx = fare.state === 'waiting' ? fare.ped.x : fare.dest.x;
+    const fy = fare.state === 'waiting' ? fare.ped.y : fare.dest.y;
+    ctx.fillStyle = '#ffd23d';
+    ctx.beginPath();
+    ctx.arc(x + fx * k, y + fy * k, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
   const p = world.player;
   const px = p.car ? p.car.x : p.x;
   const py = p.car ? p.car.y : p.y;
@@ -363,6 +375,16 @@ function drawHud(ctx, world) {
     ctx.fillStyle = '#7dd93d';
     ctx.font = 'bold 13px sans-serif';
     ctx.fillText('HIDDEN — heat cooling fast', 28, 144);
+  }
+  // A fare on the meter: where it goes, how long is left, what it pays.
+  const fare = world.activeFare;
+  if (fare) {
+    ctx.fillStyle = fare.state === 'riding' ? '#7dd93d' : '#ffd23d';
+    ctx.font = 'bold 13px sans-serif';
+    const fareLine = fare.state === 'riding'
+      ? `FARE → ${fare.dest.name} · ${Math.ceil(fare.timeLeft)}s · $${fare.payout}`
+      : 'FARE WAITING — pull up to the $ customer';
+    ctx.fillText(fareLine, 28, 164);
   }
   // Mission panel
   const step = missionStep(world);
@@ -467,6 +489,7 @@ export function render(ctx, world, screen) {
   drawTrees(ctx, world, cam);
   drawMarker(ctx, world);
   drawRoadblocks(ctx, world);
+  drawFares(ctx, world);
   const allCars = world.cars.concat(world.police);
   for (const car of allCars) {
     if (car.dead) continue;

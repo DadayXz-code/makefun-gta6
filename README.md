@@ -29,6 +29,9 @@ You are **Rico Salas**, back on the sun-soaked island of **Puerto Luna**.
   yacht score, and the last ferry: hold the terminal at 3+ stars for
   18 seconds while the crew loads the boat, then escape across the
   island. Cash rewards, localStorage save.
+- **Taxi fares**: islanders flag you down for a paid ride across the
+  island — pull up in a car, beat the 90-second meter, and a fast
+  delivery pays a 50% tip. Customers wait 45 seconds, then walk off.
 - **Combat**: a pistol (gifted after the first job) — click to shoot.
 - **HUD + minimap**: cash, health, wanted stars, mission objective
   with timer, live minimap with the mission marker and police dots.
@@ -55,6 +58,7 @@ You are **Rico Salas**, back on the sun-soaked island of **Puerto Luna**.
 - `game/src/random.js` — seeded RNG (mulberry32)
 - `game/src/world.js` — city, traffic AI, pedestrians, police, missions
 - `game/src/wanted.js` — spike-strip roadblocks and hideouts
+- `game/src/fares.js` — taxi fares: waiting customers, the meter, tips
 - `game/src/render.js` — camera, world, HUD, minimap, screens
 - `game/src/input.js` — keyboard + mouse
 - `game/src/audio.js` — procedural WebAudio sounds
@@ -100,6 +104,11 @@ the same way. To reproduce: `node /tmp/pw/shot.mjs game/ screenshots/ 8901`
   and spike hits register. The RNG sequence is identical to the
   original mulberry32 over 10,000 draws, so the staged screenshots
   still show the same island.
+- Round-3 rework (22 Nov): the game gained taxi fares
+  (`game/src/fares.js`, wired into the world loop and the HUD/minimap),
+  after round 2 was rejected at 29.4% authored lines and for the four
+  screenshots, which had never been written inside a recording. This
+  round regenerates all four screenshots in the recorded session.
 
 ## Submission status
 
